@@ -42,15 +42,15 @@ def get_shop_list(cook_book, dishes, person_count):
 
 def print_shop_list(shop_list):
     now = datetime.datetime.now()
-    file_name = 'shop_list_from_' + now.strftime("%Y-%m-%d-%H-%M-%S") + '.csv'
+    file_name = 'shop_list_from_' + now.strftime("%Y-%m-%d-%H-%M-%S") + '.tsv'
     print()
     print('Список покупок:')
 
     with (open(file_name, 'w', encoding='utf-8')) as file:
-        rec = 'Список продуктов' + '\n'
+        rec = 'Список продуктов\tКоличество\n'
         file.write(rec)
         for shop_list_item in shop_list.values():
-            rec = '{ingridient_name} {quantity} {measure}'.format(**shop_list_item)
+            rec = '{ingridient_name}\t{quantity} {measure}'.format(**shop_list_item)
             print(rec)
             file.write(rec + '\n')
     print()
@@ -61,13 +61,13 @@ def main():
     while True:
         try:
             # Вариант 1 c открытием файла формата json
-            # data_basa_cook = open_file_json('cook_book_json')
+            data_basa_cook = open_file_json('cook_book_json.json')
 
             # Вариант 2 с открытием файла в формате из задания
-            data_basa_cook = open_file_format('cook_book_format')
+            #data_basa_cook = open_file_format('cook_book_format')
 
             person_count = int(input('Введите количество человек: '))
-            dishes = input('Введите блюда в расчете на одного человека (через запятую): ').lower().split(', ')
+            dishes = input('Введите блюда в расчете на одного человека (через запятую): ').lower().replace(' ', '').split(',')
             shop_list = get_shop_list(data_basa_cook, dishes, person_count)
             print_shop_list(shop_list)
         except ValueError:

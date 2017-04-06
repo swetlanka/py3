@@ -12,6 +12,9 @@ def client_soap(url, function, param):
         print('Средняя температура: {} по Цельсию.'.format(client.service.ConvertTemp(Temperature = param, FromUnit = 'degreeFahrenheit', ToUnit = 'degreeCelsius')))
     elif function == 'c':
         print('Общая сумма: {} рублей.'.format(math.ceil(client.service.ConvertToNum(fromCurrency = 'EUR', toCurrency = 'RUB', amount = param, rounding = False))))
+    elif function == 'tr':
+        print('Суммарное расстояние: {} км.'.format(round(client.service.ChangeLengthUnit(LengthValue=param, fromLengthUnit='Miles', toLengthUnit='Kilometers'), 2)))
+
 
 def temperatura(file_name):
     temp_list = []
@@ -34,9 +37,22 @@ def currencies(file_name):
     sum_curr = sum(curr_list)
     client_soap('http://fx.currencysystem.com/webservices/CurrencyServer4.asmx?WSDL', 'c', sum_curr)
 
+
+def travel(file_name):
+    travel_list = []
+    with open(file_name, encoding='utf-8') as f:
+        for line in f:
+            travel_list.append(float(line.split()[1].replace(',', '')))
+    print(travel_list)
+
+    sum_travel = sum(travel_list)
+    client_soap('http://www.webservicex.net/length.asmx?WSDL', 'tr', sum_travel)
+
+
 def main():
     temperatura('temps.txt')
     currencies('currencies.txt')
+    travel('travel.txt')
 
 if __name__ == '__main__':
     main()

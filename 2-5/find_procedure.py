@@ -49,25 +49,24 @@ def filter_files(list_files, substr):
     for file_name in list_files:
         #print(file_name)
         with open(file_name) as f:
-            line = str(f.readline()).lower().replace(' ', '').replace('\x00', '')
-                #.encode('utf-8')
-            while line:
-                if substr in line:
+            for line in f:
+                if substr in line.lower():
                     result.append(file_name)
                     print(file_name)
                     break
-                line = str(f.readline()).lower().replace(' ', '').replace('\x00', '')
+
     return result
 
 def main():
     migrations = 'Migrations'
 
     files = glob.glob(os.path.join(migrations, "*.sql"))
-    for file in files:
-        print(file)
+
+    #for file in files:
+        #print(file)
 
     while True:
-        substr = input('Введите строку:') .lower().replace(' ', '')
+        substr = input('Введите строку:') .lower()
             #.encode('utf-8')
         #print(substr)
         files = filter_files(files, substr)

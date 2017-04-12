@@ -66,7 +66,7 @@ def main():
         #print(file)
 
     while True:
-        substr = input('Введите строку:') .lower()
+        substr = input('Введите строку:').lower()
             #.encode('utf-8')
         #print(substr)
         files = filter_files(files, substr)

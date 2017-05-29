@@ -1,0 +1,183 @@
+import requests
+import requests.exceptions
+import logging
+import time
+import json
+
+API_URL = 'https://api.vk.com/method'
+APP_TOKEN = 'd13e692be69592b09fd22c77a590dd34e186e6d696daa88d6d981e1b4e296b14acb377e82dcbc81dc0f22'
+API_VERSION = '5.64'
+
+logger = logging.getLogger('vk_api')
+
+
+def init_logger(logger_name):
+    formatter = logging.Formatter('%(asctime)s\t%(levelname)10s\t%(name)20s\t%(message)s')
+    handler = logging.StreamHandler()
+    handler.setFormatter(formatter)
+    logger = logging.getLogger(logger_name)
+    logger.addHandler(handler)
+    logger.setLevel(logging.DEBUG)
+
+
+class ManyRequestsError(Exception):
+    pass
+
+
+class BannedUser(Exception):
+    pass
+
+
+class VKApi(object):
+    def __init__(self, api_url=API_URL, app_token=APP_TOKEN, api_version=API_VERSION):
+        self.api_url = api_url
+        self.app_token = app_token
+        self.api_version = api_version
+
+    def _make_request(self, method, data=None, http_method='GET', **kwargs):
+        """
+        
+        :param method: 
+        :param (dict) kwargs:
+        :param data: 
+        :param http_method: 
+        :return: 
+        """
+        url = '{}/{}'.format(self.api_url, method)
+
+        params = kwargs
+
+        params.setdefault('access_token', self.app_token)
+        params.setdefault('v', self.api_version)
+
+        while True:
+            try:
+                req = requests.request(method=http_method, url=url, params=params, data=data)
+                req.raise_for_status()
+                # logger.debug(req)
+                try:
+                    response = req.json()
+                except Exception:
+                    logger.error(req.content)
+                    raise
+                # logger.debug(data)
+                if 'error' in response:
+                    error = response['error']
+                    code = error.get('error_code')
+                    msg = error.get('error_msg')
+                    if code == 6:
+                        raise ManyRequestsError(msg)
+                    elif code == 18:
+                        raise BannedUser(msg + '; user_id=%(user_id)s' % params)
+                    else:
+                        raise Exception('Unknown error: %s' % error)
+                else:
+                    return response.get('response')
+            except (ManyRequestsError, requests.exceptions.RequestException) as e:
+                logger.warn(str(e))
+                time.sleep(1)
+            except BannedUser as e:
+                logger.info(str(e))
+                return {}
+
+    def get_user_info(self, user_id):
+        method = 'users.get'
+        fields = 'id,counters'
+        if isinstance(user_id, list):
+            user_id = ','.join(user_id)
+        data = self._make_request(method=method, user_ids=user_id, fields=fields)
+
+        if len(data) == 1:
+            return UserInfo(data[0])
+        elif len(data) == 0:
+            raise Exception("No info about user %s" % user_id)
+        else:
+            return [UserInfo(user) for user in data]
+
+    def get_user_groups(self, user_id):
+        method = 'groups.get'
+
+        data = self._make_request(method=method, user_id=user_id, count=1000, fields='id,name,members_count', extended=1)
+
+        return [GroupInfo(group) for group in data.get('items', [])]
+
+    def get_user_friends(self, user_id):
+        method = 'friends.get'
+        fields = 'id'
+
+        data = self._make_request(method=method, user_id=user_id, fields=fields)
+
+        return [UserInfo(user) for user in data['items']]
+
+
+class UserInfo(dict):
+    def __init__(self, *args, **kwargs):
+        super(UserInfo, self).__init__(*args, **kwargs)
+
+    @property
+    def user_id(self):
+        return self['id']
+
+    @property
+    def friends_count(self):
+        return self.get('counters', {}).get('friends')
+
+    def __hash__(self):
+        return hash(self.user_id)
+
+
+class GroupInfo(dict):
+    def __init__(self, *args, **kwargs):
+        super(GroupInfo, self).__init__(*args, **kwargs)
+
+    @property
+    def group_id(self):
+        return self['id']
+
+    @property
+    def name(self):
+        return self['name']
+
+    @property
+    def members_count(self):
+        return self['members_count']
+
+    def to_dict(self):
+        return {'id': self.group_id, 'name': self.name, 'members_count': self.members_count}
+
+    def __hash__(self):
+        return hash(self.group_id)
+
+
+def main():
+    init_logger('requests')
+    init_logger('vk_api')
+    init_logger('urllib3')
+    api = VKApi()
+    user = 'tim_leary'
+    user_info = api.get_user_info(user)
+
+    user_groups = set(api.get_user_groups(user_info.user_id))
+    logger.debug("User %s has %d groups" % (user, len(user_groups)))
+
+    user_friends = api.get_user_friends(user_info.user_id)
+    logger.debug("User %s has %d friends" % (user, len(user_friends)))
+
+    friends_groups = []
+    for friend in user_friends:
+        friends_groups += api.get_user_groups(friend.user_id)
+
+    logger.info('Counting result')
+
+    uniq_friends_groups = set(friends_groups)
+    uniq_user_groups = user_groups.difference(uniq_friends_groups)
+    if len(uniq_user_groups) > 0:
+        uniq_user_groups = [group.to_dict() for group in uniq_user_groups]
+
+    logger.info("Finish program, printing result")
+
+    print(json.dumps(uniq_user_groups, sort_keys=True, indent=4, separators=(',', ': '), ensure_ascii=False))
+
+
+if __name__ == '__main__':
+    main()

@@ -1,8 +1,8 @@
 import requests
 import requests.exceptions
 import logging
-import time
 import json
+import backoff
 
 API_URL = 'https://api.vk.com/method'
 APP_TOKEN = ''
@@ -34,6 +34,7 @@ class VKApi(object):
         self.app_token = app_token
         self.api_version = api_version
 
+    @backoff.on_exception(backoff.expo, (ManyRequestsError, requests.exceptions.RequestException), max_tries=5)
     def _make_request(self, method, data=None, http_method='GET', **kwargs):
         """
         
@@ -50,35 +51,31 @@ class VKApi(object):
         params.setdefault('access_token', self.app_token)
         params.setdefault('v', self.api_version)
 
-        while True:
+        try:
+            req = requests.request(method=http_method, url=url, params=params, data=data)
+            req.raise_for_status()
+            # logger.debug(req)
             try:
-                req = requests.request(method=http_method, url=url, params=params, data=data)
-                req.raise_for_status()
-                # logger.debug(req)
-                try:
-                    response = req.json()
-                except Exception:
-                    logger.error(req.content)
-                    raise
-                # logger.debug(data)
-                if 'error' in response:
-                    error = response['error']
-                    code = error.get('error_code')
-                    msg = error.get('error_msg')
-                    if code == 6:
-                        raise ManyRequestsError(msg)
-                    elif code == 18:
-                        raise BannedUser(msg + '; user_id=%(user_id)s' % params)
-                    else:
-                        raise Exception('Unknown error: %s' % error)
+                response = req.json()
+            except Exception:
+                logger.error(req.content)
+                raise
+            # logger.debug(data)
+            if 'error' in response:
+                error = response['error']
+                code = error.get('error_code')
+                msg = error.get('error_msg')
+                if code == 6:
+                    raise ManyRequestsError(msg)
+                elif code == 18:
+                    raise BannedUser(msg + '; user_id=%(user_id)s' % params)
                 else:
-                    return response.get('response')
-            except (ManyRequestsError, requests.exceptions.RequestException) as e:
-                logger.warn(str(e))
-                time.sleep(1)
-            except BannedUser as e:
-                logger.info(str(e))
-                return {}
+                    raise Exception('Unknown error: %s' % error)
+            else:
+                return response.get('response')
+        except BannedUser as e:
+            logger.info(str(e))
+            return {}
 
     def get_user_info(self, user_id):
         method = 'users.get'
@@ -153,6 +150,7 @@ def main():
     init_logger('requests')
     init_logger('vk_api')
     init_logger('urllib3')
+    init_logger('backoff')
     api = VKApi()
     user = 'tim_leary'
     user_info = api.get_user_info(user)
@@ -170,8 +168,8 @@ def main():
     logger.info('Counting result')
 
     uniq_friends_groups = set(friends_groups)
-    uniq_user_groups = user_groups.difference(uniq_friends_groups)
-    if len(uniq_user_groups) > 0:
+    uniq_user_groups = user_groups - uniq_friends_groups
+    if uniq_user_groups:
         uniq_user_groups = [group.to_dict() for group in uniq_user_groups]
 
     logger.info("Finish program, printing result")
